@@ -58,7 +58,7 @@ def load_15m_data_from_excel(filename: str) -> pd.DataFrame:
     })
 
     # Convert types
-    df["Datetime"] = pd.to_datetime(df["Datetime"], errors="coerce", utc=True)
+    df["Datetime"] = pd.to_datetime(df["Datetime"], errors="coerce", utc=True)  # keep in UTC
     df = df.dropna(subset=["Datetime"]).copy()
 
     for col in ["Open", "High", "Low", "Close"]:
@@ -70,8 +70,8 @@ def load_15m_data_from_excel(filename: str) -> pd.DataFrame:
     return df
 
 def clip_date_range(df: pd.DataFrame, start_ts: str, end_ts: str) -> pd.DataFrame:
-    st = pd.to_datetime(start_ts, utc=False)
-    en = pd.to_datetime(end_ts, utc=False)
+    st = pd.to_datetime(start_ts, utc=True)   # force UTC
+    en = pd.to_datetime(end_ts, utc=True)     # force UTC
     return df[(df["Datetime"] >= st) & (df["Datetime"] <= en)].copy()
 
 def add_ema(df: pd.DataFrame, period: int = EMA_PERIOD) -> pd.DataFrame:
