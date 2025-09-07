@@ -6,10 +6,10 @@ from chart import plot_trade_chart, save_trade_to_excel  # (kept if you use them
 
 # ------------------ CONFIG ------------------
 PAIR = "EUR/USD"
-START_DATE = "2024-01-01 00:00:00"
-END_DATE   = "2024-12-31 23:59:59"
-OUTPUT_FILE = "backtest_results_excel.xlsx"
-EXCEL_FILE = "EURUSD_2024_15m_data.xlsx"  # <-- Your Excel file
+START_DATE = "2023-01-01 00:00:00"
+END_DATE   = "2023-12-31 23:59:59"
+OUTPUT_FILE = "backtest_results_excel1.xlsx"
+EXCEL_FILE = "EURUSD_2023_15m_data.xlsx"  # <-- Your Excel file
 
 EMA_PERIOD = 50
 SWING_LOOKBACK = 3
