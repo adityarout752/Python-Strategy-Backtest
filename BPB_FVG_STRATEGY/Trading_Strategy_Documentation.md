@@ -146,11 +146,3 @@ For SHORT: Same but with RED ARROWS, below valleys, etc.
 - Only trade after 12:00 to avoid news/events
 - Position sizing should consider account risk (not implemented in code)
 
-## Backtesting Results
-Run the script to generate Excel file with trade results. Analyze win rate, average profit/loss, and drawdowns to evaluate strategy performance.
-
-## Notes
-- This is a simplified explanation. Always paper trade first.
-- Market conditions change; monitor performance regularly.
-- The code uses 15m data but simulates on same timeframe.
-- Adjust parameters based on backtesting results.
