@@ -196,17 +196,30 @@ filter_start = st.sidebar.date_input("Filter start date")
 filter_end = st.sidebar.date_input("Filter end date")
 
 # ----------------------------- LOAD DATA -----------------------------
-try:
-    if use_local_file:
+df = pd.DataFrame()
+if use_local_file:
+    try:
         df = load_trades(None, default_path)
-    else:
-        if uploaded is None:
-            st.info("Upload a file or toggle 'Use local file'.")
-            st.stop()
+    except Exception as e:
+        st.error(f"Failed to load data: {e}")
+        st.stop()
+        raise SystemExit()
+else:
+    if uploaded is None:
+        st.info("Upload a file or toggle 'Use local file'.")
+        st.stop()
+        raise SystemExit()
+    try:
         df = load_trades(uploaded.getvalue(), uploaded.name)
-except Exception as e:
-    st.error(f"Failed to load data: {e}")
+    except Exception as e:
+        st.error(f"Failed to load data: {e}")
+        st.stop()
+        raise SystemExit()
+
+if df.empty:
+    st.error("No data loaded.")
     st.stop()
+    raise SystemExit()
 
 # Date filters
 df = df.sort_values("date_open").reset_index(drop=True)
@@ -344,12 +357,18 @@ summary = {
 }
 
 b = io.BytesIO()
+Df_export = Df.copy()
+datetime_cols = ["date_open", "date_closed", "date_open_local", "date_closed_local", "date"]
+for col in datetime_cols:
+    if col in Df_export.columns and pd.api.types.is_datetime64tz_dtype(Df_export[col]):
+        Df_export[col] = Df_export[col].dt.tz_localize(None)
+
 with pd.ExcelWriter(b, engine="xlsxwriter") as writer:
     pd.DataFrame([summary]).to_excel(writer, sheet_name="Summary", index=False)
     mgrp.to_excel(writer, sheet_name="ByMonth", index=False)
     wgrp.to_excel(writer, sheet_name="ByWeek", index=False)
     hgrp.to_excel(writer, sheet_name="ByHour", index=False)
-    Df.to_excel(writer, sheet_name="Trades", index=False)
+    Df_export.to_excel(writer, sheet_name="Trades", index=False)
 
 st.download_button(
     label="📥 Download Summary Workbook",
