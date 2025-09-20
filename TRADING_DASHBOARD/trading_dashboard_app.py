@@ -247,6 +247,7 @@ Df["date"] = pd.to_datetime(Df["date_open_local"].dt.date)
 Df["month"] = Df["date_open_local"].dt.to_period("M").astype(str)
 Df["week"] = Df["date_open_local"].dt.to_period("W").astype(str)
 Df["hour"] = Df["date_open_local"].dt.hour
+Df["hour_utc"] = Df["date_open"].dt.hour
 Df["weekday"] = Df["date_open_local"].dt.day_name()
 
 # ----------------------------- KPIs -----------------------------
@@ -317,20 +318,26 @@ st.subheader("📆 Weekly Summary")
 st.dataframe(wgrp, use_container_width=True)
 
 # Best time to trade
-hgrp = Df.groupby("hour").agg(
+hgrp = Df.groupby("hour_utc").agg(
     trades=("R_outcome", "size"),
     win_rate=("is_win", lambda s: s.mean() * 100.0),
     avg_R=("R_outcome", "mean"),
     sum_pips=("pip_outcome", "sum"),
-).reset_index().sort_values("hour")
+).reset_index().sort_values("hour_utc")
+hgrp["time_window"] = hgrp["hour_utc"].apply(lambda h: f"{h:02d}:00-{(h+1)%24:02d}:00 UTC")
 
 cc1, cc2 = st.columns(2)
 with cc1:
-    fig_hr = px.bar(hgrp, x="hour", y="avg_R", title="Avg R by Hour (Best Session)")
+    fig_hr = px.bar(hgrp, x="hour_utc", y="avg_R", title="Avg R by Hour (UTC)")
     st.plotly_chart(fig_hr, use_container_width=True)
 with cc2:
-    fig_hw = px.bar(hgrp, x="hour", y="win_rate", title="Win Rate by Hour (%)")
+    fig_hw = px.bar(hgrp, x="hour_utc", y="win_rate", title="Win Rate by Hour (UTC)")
     st.plotly_chart(fig_hw, use_container_width=True)
+
+# ----------------------------- HOURLY PERFORMANCE DETAILS -----------------------------
+st.markdown("---")
+st.subheader("⏰ Hourly Performance Details (UTC)")
+st.dataframe(hgrp[["time_window", "trades", "win_rate"]].rename(columns={"time_window": "Time Window (UTC)", "win_rate": "Win Rate (%)", "trades": "Number of Trades"}))
 
 # ----------------------------- CALENDAR VIEW -----------------------------
 st.markdown("---")
