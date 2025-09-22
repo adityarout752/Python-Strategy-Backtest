@@ -277,14 +277,21 @@ profit_factor = (gross_win / gross_loss) if gross_loss else np.nan
 st.title("📊 Trading Journal Dashboard")
 st.caption("Analyze performance — inspired by TradeZella style.")
 
-k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8)
 k1.metric("Total Trades", f"{TOTAL}")
 k2.metric("Win Rate", f"{winrate:.1f}%")
-k3.metric("Avg R", f"{avg_R:.2f}")
-k4.metric("Longest Win Streak", f"{win_streak}")
-k5.metric("Longest Lose Streak", f"{lose_streak}")
-k6.metric("Max Drawdown", f"{mdd*100:.1f}%")
-k7.metric("Profit Factor", f"{profit_factor:.2f}" if not math.isnan(profit_factor) else "N/A")
+
+# Calculate Risk:Reward ratio as average winning R_outcome / average losing R_outcome absolute value
+avg_win_r = Df.loc[Df["R_outcome"] > 0, "R_outcome"].mean()
+avg_loss_r = abs(Df.loc[Df["R_outcome"] < 0, "R_outcome"].mean())
+risk_reward_ratio = avg_win_r / avg_loss_r if avg_loss_r != 0 else float('nan')
+k3.metric("Risk:Reward Ratio", f"{risk_reward_ratio:.2f}" if not math.isnan(risk_reward_ratio) else "N/A")
+
+k4.metric("Avg R", f"{avg_R:.2f}")
+k5.metric("Longest Win Streak", f"{win_streak}")
+k6.metric("Longest Lose Streak", f"{lose_streak}")
+k7.metric("Max Drawdown", f"{mdd*100:.1f}%")
+k8.metric("Profit Factor", f"{profit_factor:.2f}" if not math.isnan(profit_factor) else "N/A")
 
 st.markdown("---")
 

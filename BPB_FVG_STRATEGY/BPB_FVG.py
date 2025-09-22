@@ -8,7 +8,7 @@ from datetime import time as dtime
 PAIR = "EUR/USD"
 START_DATE = "2020-01-01 00:00:00"
 END_DATE   = "2024-12-31 23:59:59"
-OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_results_excel_2020_2024_3.xlsx"
+OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_results_excel_2020_2024_3_time730UTC_530UTC.xlsx"
 EXCEL_FILE = "./INPUT_DATA_EXCEL/EURUSD_2020_2024_15m_data.xlsx"  # <-- Your Excel file
 
 EMA_PERIOD = 50
@@ -105,8 +105,8 @@ def three_candle_breakout(df15: pd.DataFrame, idx: int, trend_dir: str):
     if idx < BODY_AVG_WINDOW + 2:
         return None
     ts = df15.iloc[idx]["Datetime"]
-    if ts.time() < dtime(12, 0):
-        return None
+    if not (dtime(7, 30) <= ts.time() <= dtime(17, 30)):
+     return None
     c1 = df15.iloc[idx-2]
     c2 = df15.iloc[idx-1]
     c3 = df15.iloc[idx]
