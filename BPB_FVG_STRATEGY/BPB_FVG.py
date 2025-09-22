@@ -8,8 +8,8 @@ from datetime import time as dtime
 PAIR = "EUR/USD"
 START_DATE = "2020-01-01 00:00:00"
 END_DATE   = "2024-12-31 23:59:59"
-OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_results_excel_2020_2024_3_time730UTC_530UTC.xlsx"
-EXCEL_FILE = "./INPUT_DATA_EXCEL/EURUSD_2020_2024_15m_data.xlsx"  # <-- Your Excel file
+OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_results_XAUUSD_excel_2020_2024_3_time730UTC_530UTC.xlsx"
+EXCEL_FILE = "./INPUT_DATA_EXCEL/XAUUSD_2020_2024_15m.xlsx"  # <-- Your Excel file
 
 EMA_PERIOD = 50
 SWING_LOOKBACK = 3
