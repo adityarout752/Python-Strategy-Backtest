@@ -103,6 +103,38 @@ def longest_streak(series: pd.Series, value: int) -> int:
     return int(best)
 
 
+def get_streaks(series: pd.Series, value: int) -> list[int]:
+    """Return list of streak lengths for the given value."""
+    streaks = []
+    cur = 0
+    for v in series.astype(int).tolist():
+        if v == value:
+            cur += 1
+        else:
+            if cur > 0:
+                streaks.append(cur)
+            cur = 0
+    if cur > 0:
+        streaks.append(cur)
+    return streaks
+
+
+def compute_monthly_streaks_gt3(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute number of win/lose streaks >3 per month."""
+    monthly_data = []
+    for month, group in df.groupby("month"):
+        win_streaks = get_streaks(group["is_win"], 1)
+        lose_streaks = get_streaks(group["is_win"], 0)
+        num_win_gt3 = sum(1 for s in win_streaks if s > 3)
+        num_lose_gt3 = sum(1 for s in lose_streaks if s > 3)
+        monthly_data.append({
+            "month": month,
+            "win_streaks_gt3": num_win_gt3,
+            "lose_streaks_gt3": num_lose_gt3
+        })
+    return pd.DataFrame(monthly_data)
+
+
 def equity_from_r(df: pd.DataFrame, starting_balance: float, risk_pct: float) -> pd.Series:
     risk_amount = starting_balance * (risk_pct / 100.0)
     pnl = df["R_outcome"].fillna(0.0) * risk_amount
@@ -261,6 +293,14 @@ exp_R = float(Df["R_outcome"].mean())
 win_streak = longest_streak(Df["is_win"], 1)
 lose_streak = longest_streak(1 - Df["is_win"], 1)
 
+# Overall streak counts
+num_win_streaks = len(get_streaks(Df["is_win"], 1))
+num_lose_streaks = len(get_streaks(Df["is_win"], 0))
+
+# Overall streaks >3 counts
+win_streaks_gt3 = sum(1 for s in get_streaks(Df["is_win"], 1) if s > 3)
+lose_streaks_gt3 = sum(1 for s in get_streaks(Df["is_win"], 0) if s > 3)
+
 if mode == "R multiple":
     equity = equity_from_r(Df, starting_balance, risk_pct)
 else:
@@ -273,11 +313,14 @@ gross_win = Df.loc[Df["R_outcome"] > 0, "R_outcome"].sum()
 gross_loss = abs(Df.loc[Df["R_outcome"] < 0, "R_outcome"].sum())
 profit_factor = (gross_win / gross_loss) if gross_loss else np.nan
 
+# Monthly streaks >3
+monthly_streaks_df = compute_monthly_streaks_gt3(Df)
+
 # ----------------------------- HEADER -----------------------------
 st.title("📊 Trading Journal Dashboard")
 st.caption("Analyze performance — inspired by TradeZella style.")
 
-k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8)
+k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12 = st.columns(12)
 k1.metric("Total Trades", f"{TOTAL}")
 k2.metric("Win Rate", f"{winrate:.1f}%")
 
@@ -292,6 +335,10 @@ k5.metric("Longest Win Streak", f"{win_streak}")
 k6.metric("Longest Lose Streak", f"{lose_streak}")
 k7.metric("Max Drawdown", f"{mdd*100:.1f}%")
 k8.metric("Profit Factor", f"{profit_factor:.2f}" if not math.isnan(profit_factor) else "N/A")
+k9.metric("No. of Win Streaks", f"{num_win_streaks}")
+k10.metric("No. of Lose Streaks", f"{num_lose_streaks}")
+k11.metric("Win Streaks >3", f"{win_streaks_gt3}")
+k12.metric("Lose Streaks >3", f"{lose_streaks_gt3}")
 
 st.markdown("---")
 
@@ -366,6 +413,8 @@ summary = {
     "avg_R": avg_R,
     "longest_win_streak": win_streak,
     "longest_lose_streak": lose_streak,
+    "num_win_streaks": num_win_streaks,
+    "num_lose_streaks": num_lose_streaks,
     "max_drawdown_pct": mdd * 100.0,
     "profit_factor": profit_factor,
 }
@@ -380,6 +429,7 @@ for col in datetime_cols:
 with pd.ExcelWriter(b, engine="xlsxwriter") as writer:
     pd.DataFrame([summary]).to_excel(writer, sheet_name="Summary", index=False)
     mgrp.to_excel(writer, sheet_name="ByMonth", index=False)
+    monthly_streaks_df.to_excel(writer, sheet_name="StreaksByMonth", index=False)
     wgrp.to_excel(writer, sheet_name="ByWeek", index=False)
     hgrp.to_excel(writer, sheet_name="ByHour", index=False)
     Df_export.to_excel(writer, sheet_name="Trades", index=False)
