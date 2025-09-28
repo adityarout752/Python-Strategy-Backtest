@@ -88,6 +88,88 @@ def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_pro
 
     return fig
 
+def plot_overall_chart(df_ohlc, fvg_zones, df_trades):
+    """
+    Plot overall candlestick chart with EMA50, FVG zones, and trade directions.
+    """
+    df = df_ohlc.copy()
+    df.set_index("Datetime", inplace=True)
+
+    # Ensure EMA50 is present
+    if 'EMA50' not in df.columns:
+        df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
+
+    # Custom style
+    tradingview_style = mpf.make_mpf_style(
+        base_mpf_style='nightclouds',
+        marketcolors=mpf.make_marketcolors(
+            up='#26a69a', down='#ef5350',
+            edge='#131722',
+            wick={'up': '#26a69a', 'down': '#ef5350'},
+            volume='in',
+            ohlc='white'
+        ),
+        gridcolor="#131722",
+        facecolor="#131722",
+        figcolor="#131722",
+        rc={
+            'font.size': 14,
+            'font.family': 'sans-serif',
+            'axes.labelcolor': 'white',
+            'axes.edgecolor': 'white',
+            'axes.titlecolor': 'white',
+            'xtick.color': 'white',
+            'ytick.color': 'white'
+        }
+    )
+
+    # Add plots
+    ap = [
+        mpf.make_addplot(df['EMA50'], color='blue', width=1),
+    ]
+
+    # Add FVG zones as horizontal lines
+    for zone in fvg_zones:
+        idx = zone["idx"]
+        fvg_low, fvg_high = zone["fvg"]
+        direction = zone["direction"]
+        color = 'orange' if direction == "LONG" else 'purple'
+        ap.append(mpf.make_addplot([fvg_low] * len(df), color=color, alpha=0.3, width=2, linestyle='--'))
+        ap.append(mpf.make_addplot([fvg_high] * len(df), color=color, alpha=0.3, width=2, linestyle='--'))
+
+    title = "Candlestick Chart with 50 EMA and FVG Zones"
+    fig, axlist = mpf.plot(
+        df,
+        type="candle",
+        style=tradingview_style,
+        addplot=ap,
+        title=title,
+        ylabel="Price",
+        volume=False,
+        returnfig=True,
+        tight_layout=True,
+        figratio=(16,9),
+        figscale=2,
+        update_width_config=dict(candle_linewidth=3, candle_width=0.8)
+    )
+
+    # Add trade direction markers
+    for _, trade in df_trades.iterrows():
+        entry_time = trade["date_open"]
+        direction = trade["direction"]
+        entry_price = trade.get("entry_price", df.loc[df.index == entry_time, "Close"].iloc[0] if entry_time in df.index else None)
+        if entry_price is None:
+            continue
+        idx_entry = df.index.get_loc(entry_time) if entry_time in df.index else None
+        if idx_entry is None:
+            continue
+        if direction == "LONG":
+            axlist[0].annotate('', xy=(idx_entry, entry_price), xytext=(idx_entry, entry_price + 0.002), arrowprops=dict(arrowstyle='->', color='green'), fontsize=10)
+        else:
+            axlist[0].annotate('', xy=(idx_entry, entry_price), xytext=(idx_entry, entry_price - 0.002), arrowprops=dict(arrowstyle='->', color='red'), fontsize=10)
+
+    return fig
+
 if __name__ == "__main__":
     # Create sample data of 20 candlesticks
     times = pd.date_range(start="2023-01-01 12:00", periods=20, freq="15min", tz="UTC")
