@@ -9,7 +9,23 @@ def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_pro
     Plot a candlestick chart for a specific trade with entry, stop-loss, take-profit, FVG, swing levels, and EMA50.
     Mark entry and SL with arrows.
     """
-    df_trade = df[(df["Datetime"] >= entry_time) & (df["Datetime"] <= exit_time)].copy()
+    # Find indices
+    entry_idx = df[df["Datetime"] == entry_time].index
+    if entry_idx.empty:
+        print(f"Entry time not found for trade {trade_id}")
+        return
+    entry_idx = entry_idx[0]
+
+    exit_idx = df[df["Datetime"] == exit_time].index
+    if exit_idx.empty:
+        print(f"Exit time not found for trade {trade_id}")
+        return
+    exit_idx = exit_idx[0]
+
+    # Include 10 candles before entry and 10 after exit
+    start_idx = max(0, entry_idx - 10)
+    end_idx = min(len(df), exit_idx + 11)
+    df_trade = df.iloc[start_idx:end_idx].copy()
     if df_trade.empty:
         print(f"No data for trade {trade_id}")
         return

@@ -1,15 +1,20 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 from datetime import time as dtime
+
+# Add path for trade_screenshot
+sys.path.append('..')
+from trade_screenshot import save_trade_screenshot
 
 
 # ------------------ CONFIG ------------------
 PAIR = "EUR/USD"
 START_DATE = "2020-01-01 00:00:00"
-END_DATE   = "2024-12-31 23:59:59"
-OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_results_NAS100_excel_2020_2024_3_time12UTC_530UTC.xlsx"
-EXCEL_FILE = "./INPUT_DATA_EXCEL/NAS100_2020to2024_15m.xlsx"  # <-- Your Excel file
+END_DATE   = "2020-12-31 23:59:59"
+OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_demo.xlsx"
+EXCEL_FILE = "./INPUT_DATA_EXCEL/demo.xlsx"  # <-- Your Excel file
 
 EMA_PERIOD = 50
 SWING_LOOKBACK = 3
@@ -228,6 +233,11 @@ def backtest():
             continue
 
         entry_time, exit_time, result, pip_risk, pip_outcome = sim
+
+        # Save trade screenshot
+        trade_id = len(results) + 1
+        save_trade_screenshot(df15, entry_time, exit_time, entry, sl, tp, fvg, bo["last_swing_high"], bo["last_swing_low"], trend, trade_id)
+
         results.append({
             "PAIR TRADED": PAIR,
             "DATE OPEN": entry_time.strftime("%Y-%m-%d %H:%M"),
