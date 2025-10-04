@@ -8,6 +8,7 @@
 # Run:  streamlit run trading_dashboard_app.py
 
 import os
+import sys
 import io
 import math
 import numpy as np
@@ -18,6 +19,10 @@ import plotly.graph_objects as go
 import calendar
 from datetime import datetime, timedelta
 
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from Chart.trade_chart import plot_trade_chart
+
 st.set_page_config(
     page_title="Trading Journal Dashboard",
     page_icon="📈",
@@ -26,70 +31,105 @@ st.set_page_config(
 
 # ----------------------------- UTILITIES -----------------------------
 @st.cache_data(show_spinner=False)
-def load_trades(file_bytes: bytes, filename: str) -> pd.DataFrame:
-    """Load trades from uploaded bytes or local file."""
+def load_data(file_bytes: bytes, filename: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load trades and OHLC data from uploaded bytes or local file."""
+    df_trades = pd.DataFrame()
+    df_ohlc = pd.DataFrame()
+
     if file_bytes is None and filename and os.path.exists(filename):
         ext = os.path.splitext(filename)[1].lower()
         if ext in [".xlsx", ".xls"]:
-            df = pd.read_excel(filename)
+            # Load trades from first sheet
+            df_trades = pd.read_excel(filename, sheet_name=0)
+            # Try to load OHLC from second sheet if it exists
+            try:
+                df_ohlc = pd.read_excel(filename, sheet_name=1)
+            except:
+                pass
         elif ext == ".csv":
-            df = pd.read_csv(filename)
+            df_trades = pd.read_csv(filename)
         else:
             raise ValueError("Unsupported file type. Use .xlsx, .xls, or .csv")
     else:
         if filename.lower().endswith((".xlsx", ".xls")):
-            df = pd.read_excel(io.BytesIO(file_bytes))
+            # Load trades from first sheet
+            df_trades = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0)
+            # Try to load OHLC from second sheet if it exists
+            try:
+                df_ohlc = pd.read_excel(io.BytesIO(file_bytes), sheet_name=1)
+            except:
+                pass
         elif filename.lower().endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(file_bytes))
+            df_trades = pd.read_csv(io.BytesIO(file_bytes))
         else:
             raise ValueError("Unsupported uploaded file type.")
 
-    # Normalize columns
-    df.columns = [c.strip().lower() for c in df.columns]
+    # Process trades data
+    if not df_trades.empty:
+        # Normalize columns
+        df_trades.columns = [c.strip().lower() for c in df_trades.columns]
 
-    rename_map = {
-        "pair traded": "pair",
-        "pair": "pair",
-        "date open": "date_open",
-        "open date": "date_open",
-        "date closed": "date_closed",
-        "close date": "date_closed",
-        "day of week": "day_of_week",
-        "time": "time_open",
-        "pip risked": "pip_risked",
-        "direction(long or short)": "direction",
-        "direction (long or short)": "direction",
-        "result": "result",
-        "pip outcome": "pip_outcome",
-    }
-    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+        rename_map = {
+            "pair traded": "pair",
+            "pair": "pair",
+            "date open": "date_open",
+            "open date": "date_open",
+            "date closed": "date_closed",
+            "close date": "date_closed",
+            "day of week": "day_of_week",
+            "time": "time_open",
+            "pip risked": "pip_risked",
+            "direction(long or short)": "direction",
+            "direction (long or short)": "direction",
+            "result": "result",
+            "pip outcome": "pip_outcome",
+            "entry time": "entry_time",
+            "exit time": "exit_time",
+            "entry": "entry_price",
+            "sl": "stop_loss",
+            "tp": "take_profit",
+            "fvg": "fvg_zone",
+            "swing high": "swing_high",
+            "swing low": "swing_low",
+            "trend": "direction",
+            "chart": "chart",
+        }
+        df_trades = df_trades.rename(columns={k: v for k, v in rename_map.items() if k in df_trades.columns})
 
-    required = {"pair", "date_open", "date_closed", "pip_risked", "direction", "result", "pip_outcome"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing required columns: {sorted(list(missing))}")
+        required = {"pair", "date_open", "date_closed", "pip_risked", "direction", "result", "pip_outcome"}
+        missing = required - set(df_trades.columns)
+        if missing:
+            raise ValueError(f"Missing required columns: {sorted(list(missing))}")
 
-    # Parse datetimes
-    df["date_open"] = pd.to_datetime(df["date_open"], errors="coerce", utc=True)
-    df["date_closed"] = pd.to_datetime(df["date_closed"], errors="coerce", utc=True)
-    df = df.dropna(subset=["date_open", "date_closed"]).copy()
+        # Parse datetimes
+        df_trades["date_open"] = pd.to_datetime(df_trades["date_open"], errors="coerce", utc=True)
+        df_trades["date_closed"] = pd.to_datetime(df_trades["date_closed"], errors="coerce", utc=True)
+        df_trades = df_trades.dropna(subset=["date_open", "date_closed"]).copy()
 
-    # Numbers
-    for c in ["pip_risked", "pip_outcome"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    df = df.dropna(subset=["pip_risked", "pip_outcome"]).copy()
+        # Numbers
+        for c in ["pip_risked", "pip_outcome"]:
+            df_trades[c] = pd.to_numeric(df_trades[c], errors="coerce")
+        df_trades = df_trades.dropna(subset=["pip_risked", "pip_outcome"]).copy()
 
-    # Clean strings
-    if "direction" in df:
-        df["direction"] = df["direction"].str.upper().str.strip()
-    if "result" in df:
-        df["result"] = df["result"].str.upper().str.strip()
+        # Clean strings
+        if "direction" in df_trades:
+            df_trades["direction"] = df_trades["direction"].str.upper().str.strip()
+        if "result" in df_trades:
+            df_trades["result"] = df_trades["result"].str.upper().str.strip()
 
-    # Derived columns
-    df["R_outcome"] = np.where(df["pip_risked"] > 0, df["pip_outcome"] / df["pip_risked"], np.nan)
-    df["is_win"] = np.where(df["R_outcome"] > 0, 1, 0)
+        # Derived columns
+        df_trades["R_outcome"] = np.where(df_trades["pip_risked"] > 0, df_trades["pip_outcome"] / df_trades["pip_risked"], np.nan)
+        df_trades["is_win"] = np.where(df_trades["R_outcome"] > 0, 1, 0)
 
-    return df.reset_index(drop=True)
+    # Process OHLC data
+    if not df_ohlc.empty:
+        df_ohlc.columns = [c.strip().lower() for c in df_ohlc.columns]
+        if "datetime" in df_ohlc.columns:
+            df_ohlc["Datetime"] = pd.to_datetime(df_ohlc["datetime"], errors="coerce", utc=True)
+        elif "date" in df_ohlc.columns:
+            df_ohlc["Datetime"] = pd.to_datetime(df_ohlc["date"], errors="coerce", utc=True)
+
+    return df_trades.reset_index(drop=True), df_ohlc
 
 
 def longest_streak(series: pd.Series, value: int) -> int:
@@ -209,7 +249,7 @@ uploaded = None
 if use_local_file:
     default_path = st.sidebar.text_input("Local file path", value="backtest_results_excel.xlsx")
 else:
-    uploaded = st.sidebar.file_uploader("Upload trades (.xlsx / .csv)", type=["xlsx", "xls", "csv"])
+    uploaded = st.sidebar.file_uploader("Upload trades with OHLC data (.xlsx / .csv)", type=["xlsx", "xls", "csv"])
     default_path = None
 
 use_ist = st.sidebar.checkbox("Display times in IST (UTC+5:30)", value=True)
@@ -229,9 +269,10 @@ filter_end = st.sidebar.date_input("Filter end date")
 
 # ----------------------------- LOAD DATA -----------------------------
 df = pd.DataFrame()
+df_ohlc = pd.DataFrame()
 if use_local_file:
     try:
-        df = load_trades(None, default_path)
+        df, df_ohlc = load_data(None, default_path)
     except Exception as e:
         st.error(f"Failed to load data: {e}")
         st.stop()
@@ -242,14 +283,14 @@ else:
         st.stop()
         raise SystemExit()
     try:
-        df = load_trades(uploaded.getvalue(), uploaded.name)
+        df, df_ohlc = load_data(uploaded.getvalue(), uploaded.name)
     except Exception as e:
         st.error(f"Failed to load data: {e}")
         st.stop()
         raise SystemExit()
 
 if df.empty:
-    st.error("No data loaded.")
+    st.error("No trades data loaded.")
     st.stop()
     raise SystemExit()
 
@@ -440,5 +481,26 @@ st.download_button(
     file_name="trading_dashboard_summary.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
+st.markdown("---")
+
+st.subheader("📈 Trade Charts")
+
+if not df_ohlc.empty:
+    for idx, trade in Df.iterrows():
+        trade_id = idx + 1
+        with st.expander(f"Trade {trade_id} - {trade['direction']} - {'Win' if trade['is_win'] else 'Loss'}", expanded=False):
+            fig = plot_trade_chart(df_ohlc, trade['entry_time'], trade['exit_time'], trade['entry_price'], trade['stop_loss'], trade['take_profit'], trade['fvg_zone'], trade['swing_high'], trade['swing_low'], trade['direction'], trade_id)
+            st.pyplot(fig)
+            st.write(f"**Pair:** {trade['pair']}")
+            st.write(f"**Open Date:** {trade['date_open_local']}")
+            st.write(f"**Close Date:** {trade['date_closed_local']}")
+            st.write(f"**Direction:** {trade['direction']}")
+            st.write(f"**Result:** {trade['result']}")
+            st.write(f"**Pip Risked:** {trade['pip_risked']}")
+            st.write(f"**Pip Outcome:** {trade['pip_outcome']}")
+            st.write(f"**R Outcome:** {trade['R_outcome']:.2f}")
+else:
+    st.info("No OHLC data found in the uploaded file. Ensure your Excel file has a second sheet with OHLC data.")
 
 st.caption("Built with ❤️ using Streamlit & Plotly. Inspired by TradeZella-style metrics.")

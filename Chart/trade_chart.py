@@ -62,9 +62,7 @@ def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_pro
 
     # Add plots
     ap = [
-        mpf.make_addplot(df_trade['EMA50'], color='blue', width=1),
-        mpf.make_addplot([fvg_zone[0]] * len(df_trade), color="orange", alpha=0.1, width=4),
-        mpf.make_addplot([fvg_zone[1]] * len(df_trade), color="orange", alpha=0.1, width=4),
+        mpf.make_addplot(df_trade['EMA50'], color='blue', width=3),
         mpf.make_addplot([take_profit] * len(df_trade), color="#00e676", linestyle="-", width=1),
         mpf.make_addplot([swing_high] * len(df_trade), color="#ab47bc", linestyle=":", width=2),
         mpf.make_addplot([swing_low] * len(df_trade), color="#fbc02d", linestyle=":", width=2),
@@ -86,21 +84,8 @@ def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_pro
         update_width_config=dict(candle_linewidth=3, candle_width=0.8)
     )
 
-    # Add arrows
-    idx_entry = 0
-    idx_exit = len(df_trade) - 1
-
-    # Direction arrow at entry
-    if direction == "LONG":
-        axlist[0].annotate('', xy=(idx_entry, entry_price), xytext=(idx_entry, entry_price + 0.002), arrowprops=dict(arrowstyle='->', color='cyan'), fontsize=10)
-    else:
-        axlist[0].annotate('', xy=(idx_entry, entry_price), xytext=(idx_entry, entry_price - 0.002), arrowprops=dict(arrowstyle='->', color='magenta'), fontsize=10)
-
-    # Entry arrow
-    axlist[0].annotate('Entry', xy=(idx_entry, entry_price), xytext=(idx_entry + 5, entry_price + 0.001), arrowprops=dict(arrowstyle='->', color='green'), fontsize=10, color='green')
-
-    # SL arrow at exit
-    axlist[0].annotate('SL', xy=(idx_exit, stop_loss), xytext=(idx_exit - 5, stop_loss - 0.001), arrowprops=dict(arrowstyle='->', color='red'), fontsize=10, color='red')
+    # Add FVG zone as shaded area
+    axlist[0].fill_between(range(len(df_trade)), fvg_zone[0], fvg_zone[1], color='lightpink', alpha=0.3, label='FVG Zone')
 
     return fig
 
@@ -186,34 +171,96 @@ def plot_overall_chart(df_ohlc, fvg_zones, df_trades):
 
     return fig
 
-if __name__ == "__main__":
-    # Create sample data of 20 candlesticks
-    times = pd.date_range(start="2023-01-01 12:00", periods=20, freq="15min", tz="UTC")
-    np.random.seed(42)
-    base_price = 1.1000
-    prices = []
-    for i in range(len(times)):
-        change = np.random.normal(0, 0.001)
-        base_price += change
-        o = base_price
-        h = o + abs(np.random.normal(0, 0.0005))
-        l = o - abs(np.random.normal(0, 0.0005))
-        c = np.random.uniform(l, h)
-        prices.append([o, h, l, c])
-    df = pd.DataFrame(prices, columns=["Open", "High", "Low", "Close"])
-    df["Datetime"] = times
-    df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
+def plot_position_tool(df, entry_price, stop_loss, take_profit, direction):
+    """
+    Plot a visual similar to TradingView's Long/Short Position tool overlaid on candlestick chart.
+    Shows candlesticks, EMA50, entry line, TP zone (green shaded), SL zone (red shaded), and RRR.
+    """
+    entry_price = float(entry_price)
+    stop_loss = float(stop_loss)
+    take_profit = float(take_profit)
+    direction = direction.upper()
 
-    # Mock trade parameters
-    entry_time = times[5]
-    exit_time = times[15]
-    entry_price = 1.105
-    stop_loss = 1.100
-    take_profit = 1.115
-    fvg_zone = (1.102, 1.108)
-    swing_high = 1.110
-    swing_low = 1.100
-    direction = "LONG"
-    trade_id = 1
+    df_plot = df.copy()
+    if 'EMA50' not in df_plot.columns:
+        df_plot['EMA50'] = df_plot['Close'].ewm(span=50, adjust=False).mean()
+    df_plot.set_index("Datetime", inplace=True)
 
-    plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_profit, fvg_zone, swing_high, swing_low, direction, trade_id)
+    # Calculate RRR
+    if direction == "LONG":
+        risk = entry_price - stop_loss
+        reward = take_profit - entry_price
+    else:  # SHORT
+        risk = stop_loss - entry_price
+        reward = entry_price - take_profit
+
+    if risk <= 0:
+        print("Invalid SL: risk must be positive.")
+        return
+
+    rrr = reward / risk
+
+    # Custom style
+    tradingview_style = mpf.make_mpf_style(
+        base_mpf_style='nightclouds',
+        marketcolors=mpf.make_marketcolors(
+            up='#26a69a', down='#ef5350',
+            edge='#131722',
+            wick={'up': '#26a69a', 'down': '#ef5350'},
+            volume='in',
+            ohlc='white'
+        ),
+        gridcolor="#131722",
+        facecolor="#131722",
+        figcolor="#131722",
+        rc={
+            'font.size': 14,
+            'font.family': 'sans-serif',
+            'axes.labelcolor': 'white',
+            'axes.edgecolor': 'white',
+            'axes.titlecolor': 'white',
+            'xtick.color': 'white',
+            'ytick.color': 'white'
+        }
+    )
+
+    # Add plots for lines
+    ap = [
+        mpf.make_addplot(df_plot['EMA50'], color='blue', width=2),
+        mpf.make_addplot([entry_price] * len(df_plot), color='black', linewidth=2),
+        mpf.make_addplot([take_profit] * len(df_plot), color='green', linestyle='-', width=1),
+        mpf.make_addplot([stop_loss] * len(df_plot), color='red', linestyle='-', width=1),
+    ]
+
+    title = f'{direction} Position - Entry: {entry_price}, SL: {stop_loss}, TP: {take_profit}, RRR: {rrr:.2f}'
+    fig, axlist = mpf.plot(
+        df_plot,
+        type="candle",
+        style=tradingview_style,
+        addplot=ap,
+        title=title,
+        ylabel="Price",
+        volume=False,
+        returnfig=True,
+        tight_layout=True,
+        figratio=(16,9),
+        figscale=1.5,
+        update_width_config=dict(candle_linewidth=2, candle_width=0.6)
+    )
+
+    # Add shaded zones post-plot
+    x = range(len(df_plot))
+    if direction == "LONG":
+        # Green TP zone
+        axlist[0].fill_between(x, entry_price, take_profit, color='green', alpha=0.2)
+        # Red SL zone
+        axlist[0].fill_between(x, stop_loss, entry_price, color='red', alpha=0.2)
+    else:
+        # Green TP zone
+        axlist[0].fill_between(x, take_profit, entry_price, color='green', alpha=0.2)
+        # Red SL zone
+        axlist[0].fill_between(x, entry_price, stop_loss, color='red', alpha=0.2)
+
+    plt.show()
+    return fig
+

@@ -1,0 +1,8 @@
+- [x] Add a new function `plot_position_tool` to Chart/trade_chart.py that visualizes entry, SL, TP with shaded zones and RRR.
+- [x] Function parameters: entry_price, stop_loss, take_profit, direction ('LONG' or 'SHORT').
+- [x] Use matplotlib to create the plot.
+- [x] Horizontal line for entry (black).
+- [x] Green shaded area between entry and TP.
+- [x] Red shaded area between entry and SL.
+- [x] Display RRR as text on the plot.
+- Test the function with sample data.
