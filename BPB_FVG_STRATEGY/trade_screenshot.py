@@ -6,11 +6,11 @@ import os.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from Chart.trade_chart import plot_trade_chart
 
-def save_trade_screenshot(df, entry_time, exit_time, entry_price, stop_loss, take_profit, fvg_zone, swing_high, swing_low, direction, trade_id):
+def save_trade_screenshot(df, entry_time, exit_time, entry_price, stop_loss, take_profit, fvg_zone, swing_high, swing_low, direction, trade_id, exit_price, result):
     """
     Generate and save a screenshot of the trade chart using matplotlib.
     """
-    fig = plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_profit, fvg_zone, swing_high, swing_low, direction, trade_id)
+    fig = plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_profit, fvg_zone, swing_high, swing_low, direction, trade_id, exit_price, result)
 
     # Create screenshots directory if not exists
     os.makedirs('screenshots', exist_ok=True)

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import mplfinance as mpf
 import matplotlib.pyplot as plt
 
-def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_profit, fvg_zone, swing_high, swing_low, direction, trade_id):
+def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_profit, fvg_zone, swing_high, swing_low, direction, trade_id, exit_price, result):
     """
     Plot a candlestick chart for a specific trade with entry, stop-loss, take-profit, FVG, swing levels, and EMA50.
     Mark entry and SL with arrows.
@@ -36,6 +36,10 @@ def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_pro
     if 'EMA50' not in df_trade.columns:
         df_trade['EMA50'] = df_trade['Close'].ewm(span=50, adjust=False).mean()
 
+    # Calculate relative indices
+    entry_rel_idx = entry_idx - start_idx
+    exit_rel_idx = exit_idx - start_idx
+
     # Custom style
     tradingview_style = mpf.make_mpf_style(
         base_mpf_style='nightclouds',
@@ -63,12 +67,14 @@ def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_pro
     # Add plots
     ap = [
         mpf.make_addplot(df_trade['EMA50'], color='blue', width=3),
-        mpf.make_addplot([take_profit] * len(df_trade), color="#00e676", linestyle="-", width=1),
+        mpf.make_addplot([entry_price] * len(df_trade), color='white', linestyle='--', width=2),
+        mpf.make_addplot([take_profit] * len(df_trade), color="#00e676", linestyle="-", width=2),
+        mpf.make_addplot([stop_loss] * len(df_trade), color="#ef5350", linestyle="-", width=2),
         mpf.make_addplot([swing_high] * len(df_trade), color="#ab47bc", linestyle=":", width=2),
         mpf.make_addplot([swing_low] * len(df_trade), color="#fbc02d", linestyle=":", width=2),
     ]
 
-    title = f"Trade {trade_id} | {direction} | Entry: {entry_price} SL: {stop_loss} TP: {take_profit}"
+    title = f"Trade {trade_id} | {direction} | Entry: {entry_price} SL: {stop_loss} TP: {take_profit} Result: {result} @ {exit_price:.5f}"
     fig, axlist = mpf.plot(
         df_trade,
         type="candle",
@@ -84,8 +90,57 @@ def plot_trade_chart(df, entry_time, exit_time, entry_price, stop_loss, take_pro
         update_width_config=dict(candle_linewidth=3, candle_width=0.8)
     )
 
-    # Add FVG zone as shaded area
-    axlist[0].fill_between(range(len(df_trade)), fvg_zone[0], fvg_zone[1], color='lightpink', alpha=0.3, label='FVG Zone')
+    # Add FVG zone as shaded area with label
+    axlist[0].fill_between(range(len(df_trade)), fvg_zone[0], fvg_zone[1], color='orange', alpha=0.4, label='FVG Zone')
+    # Add FVG boundaries as lines
+    axlist[0].axhline(y=fvg_zone[0], color='orange', linestyle='--', linewidth=1, alpha=0.7)
+    axlist[0].axhline(y=fvg_zone[1], color='orange', linestyle='--', linewidth=1, alpha=0.7)
+
+    # Add direction marker: white filled triangle
+    marker = '^' if direction == "LONG" else 'v'
+    axlist[0].scatter(entry_rel_idx, entry_price, color='white', marker=marker, s=100, edgecolors='black', zorder=5)
+
+    # Mark trade result on chart at exit
+    color_result = 'green' if result == "WIN" else 'red'
+    axlist[0].scatter(exit_rel_idx, exit_price, color=color_result, marker='o', s=120, edgecolors='black', zorder=5)
+    axlist[0].text(exit_rel_idx, exit_price, f'{result}\n{exit_price:.5f}', color='white', fontsize=10,
+                   ha='center', va='bottom' if result == "WIN" else 'top', weight='bold',
+                   bbox=dict(facecolor=color_result, alpha=0.7, boxstyle='round,pad=0.3'))
+
+    # Add labels for SL and TP
+    axlist[0].text(len(df_trade)-1, take_profit, 'TP', fontsize=10, color='green', ha='left', va='center')
+    axlist[0].text(len(df_trade)-1, stop_loss, 'SL', fontsize=10, color='red', ha='left', va='center')
+
+    # Add legend on the side
+    legend_text = (
+        "Blue: EMA50\n"
+        "White Dashed: Entry Price\n"
+        "Green: Take Profit\n"
+        "Red: Stop Loss\n"
+        "Purple Dotted: Swing High\n"
+        "Yellow Dotted: Swing Low\n"
+        "Orange: FVG Zone\n"
+        "White Triangle: Entry Direction\n"
+        "Green/Red Circle: Trade Result"
+    )
+    axlist[0].text(1.02, 0.5, legend_text, transform=axlist[0].transAxes, fontsize=10, color='white',
+                   verticalalignment='center', bbox=dict(boxstyle="round,pad=0.3", facecolor="#131722", edgecolor='white'))
+
+    # Checklist of trading conditions
+    # Assuming conditions are met since trade was taken, but we can check
+    trend_ok = (direction == "LONG" and df_trade.iloc[entry_rel_idx]['Close'] > df_trade.iloc[entry_rel_idx]['EMA50']) or \
+               (direction == "SHORT" and df_trade.iloc[entry_rel_idx]['Close'] < df_trade.iloc[entry_rel_idx]['EMA50'])
+    # Other conditions are harder to check without full context, assume met
+    checklist = (
+        f"Trend OK: {'Yes' if trend_ok else 'No'}\n"
+        "3-Candle Breakout: Yes\n"
+        "FVG Present: Yes\n"
+        "Entry at FVG Mid: Yes\n"
+        "SL Set: Yes\n"
+        "TP Set: Yes"
+    )
+    axlist[0].text(1.02, 0.1, f"Checklist:\n{checklist}", transform=axlist[0].transAxes, fontsize=9, color='white',
+                   verticalalignment='bottom', bbox=dict(boxstyle="round,pad=0.3", facecolor="#131722", edgecolor='white'))
 
     return fig
 

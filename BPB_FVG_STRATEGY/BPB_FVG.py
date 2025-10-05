@@ -233,10 +233,11 @@ def backtest():
             continue
 
         entry_time, exit_time, result, pip_risk, pip_outcome = sim
+        exit_price = tp if result == "WIN" else sl
 
         # Save trade screenshot
         trade_id = len(results) + 1
-        save_trade_screenshot(df15, entry_time, exit_time, entry, sl, tp, fvg, bo["last_swing_high"], bo["last_swing_low"], trend, trade_id)
+        save_trade_screenshot(df15, entry_time, exit_time, entry, sl, tp, fvg, bo["last_swing_high"], bo["last_swing_low"], trend, trade_id, exit_price, result)
 
         results.append({
             "PAIR TRADED": PAIR,
