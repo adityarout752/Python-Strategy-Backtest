@@ -11,14 +11,14 @@ from trade_screenshot import save_trade_screenshot
 
 # ------------------ CONFIG ------------------
 PAIR = "EUR/USD"
-START_DATE = "2020-01-01 00:00:00"
-END_DATE   = "2020-12-31 23:59:59"
+START_DATE = "2023-01-01 00:00:00"
+END_DATE   = "2023-12-31 23:59:59"
 OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_demo.xlsx"
-EXCEL_FILE = "./INPUT_DATA_EXCEL/demo.xlsx"  # <-- Your Excel file
+EXCEL_FILE = "./INPUT_DATA_EXCEL/EURUSD_2023_15m_data.xlsx"  # <-- Your Excel file
 
-EMA_PERIOD = 50
-SWING_LOOKBACK = 3
+SWING_LOOKBACK = 5
 BODY_AVG_WINDOW = 10
+EMA_PERIOD = 50
 RR = 2.1
 # --------------------------------------------
 
@@ -163,11 +163,33 @@ def current_trend(df15: pd.DataFrame, idx: int):
 
 # ---------------- Trade Simulation on 15m ----------------
 def simulate_trade_on_15m(df15, start_idx, entry, sl, tp, direction):
-    entry_time = df15.iloc[start_idx]["Datetime"]
     entry = float(entry); sl = float(sl); tp = float(tp)
 
+    # Find the first candle where price reaches the entry level
+    entry_reached = False
+    entry_time = None
     for j in range(start_idx + 1, len(df15)):
         row = df15.iloc[j]
+        high, low, ts = float(row["High"]), float(row["Low"]), row["Datetime"]
+
+        if direction == "LONG":
+            if low <= entry <= high:
+                entry_reached = True
+                entry_time = ts
+                break
+        else:  # SHORT
+            if low <= entry <= high:
+                entry_reached = True
+                entry_time = ts
+                break
+
+    if not entry_reached:
+        # Entry price not reached in available data, skip trade
+        return None
+
+    # Start monitoring SL and TP from the candle after entry
+    for k in range(j + 1, len(df15)):
+        row = df15.iloc[k]
         high, low, ts = float(row["High"]), float(row["Low"]), row["Datetime"]
 
         if direction == "LONG":
