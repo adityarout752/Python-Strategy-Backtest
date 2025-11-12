@@ -18,8 +18,8 @@ EXCEL_FILE = "./INPUT_DATA_EXCEL/EURUSD_2023_15m_data.xlsx"  # <-- Your Excel fi
 
 SWING_LOOKBACK = 5
 BODY_AVG_WINDOW = 10
-EMA_PERIOD = 50
-RR = 2.1
+EMA_PERIOD = 21
+RR = 1
 # --------------------------------------------
 
 # ---------- Helpers ----------
@@ -126,7 +126,7 @@ def three_candle_breakout(df15: pd.DataFrame, idx: int, trend_dir: str):
         same_color = (c1["Close"] < c1["Open"]) and (c2["Close"] < c2["Open"]) and (c3["Close"] < c3["Open"])
     if not same_color:
         return None
-    min_body = bavg / 3.0
+    min_body = bavg * 1.5
     if not (body_size(c1) >= min_body and body_size(c2) >= min_body and body_size(c3) >= min_body):
         return None
     prior = df15.iloc[:idx-1]
