@@ -6,20 +6,157 @@ ICT Unicorn Strategy (Fractal swings + True FVG + Breaker Block + HTF filter)
 - Optional: df_htf can be provided (same columns). If not provided, df_ltf is resampled to HTF.
 """
 
+import os
+import glob
 import pandas as pd
 import numpy as np
 
 
 # --------------------- USER PARAMETERS ---------------------
-HTF_RESAMPLE = "1H"           # e.g., "1H", "4H"
-LTF = "5T"                    # for reference only
+HTF_RESAMPLE = "4H"           # e.g., "1H", "4H"
+LTF = "15T"                    # for reference only
 RISK_PER_TRADE = 1         # fraction of balance
 RISK_REWARD = 2.1             # TP = SL * RR
 STOP_BUFFER = 0.0005          # price units to buffer stop outside breaker (adjust for instrument)
 MIN_FVG_CANDLES = 3           # FVG uses 3 candles by definition
 START_BALANCE = 10000.0
+
+# Config for data loading and output (adapted from BPB_FVG)
+PAIR = "EUR/USD"
+START_DATE = "2020-01-01 00:00:00"
+END_DATE   = "2024-12-31 23:59:59"
+OUTPUT_FILE = "./EXCEL_RESULT_BACKTEST/backtest_results_ICT_UNICORN_excel_2020_2024.xlsx"
+EXCEL_FILE = "./INPUT_DATA_EXCEL/EURUSD_2020_2024_15m_data.xlsx"  # <-- Your Excel file
 # -----------------------------------------------------------
 
+
+# ---------- Helpers (from BPB_FVG) ----------
+def pip_size_for_pair(pair: str) -> float:
+    """Auto-detect pip size (supports JPY pairs)."""
+    return 0.01 if "JPY" in pair.replace("/", "").upper() else 0.0001
+
+PIP_SIZE = pip_size_for_pair(PAIR)
+
+def calculate_pip_values(entry: float, sl: float, exit_price: float, direction: str, rr: float):
+    """Return pip_risk, pip_outcome based on entry, stop, and exit."""
+    if direction == "LONG":
+        pip_risk = abs(entry - sl) / PIP_SIZE
+        pip_outcome = (exit_price - entry) / PIP_SIZE
+    else:  # SHORT
+        pip_risk = abs(sl - entry) / PIP_SIZE
+        pip_outcome = (entry - exit_price) / PIP_SIZE
+    return round(pip_risk, 2), round(pip_outcome, 2)
+
+# ---------- Data Loading (from BPB_FVG) ----------
+def load_15m_data_from_excel(filename: str) -> pd.DataFrame:
+    """
+    Robust loader with diagnostics:
+    - expands ~ and makes absolute path
+    - prints cwd and directory contents if file not found
+    - searches the project recursively for matching filenames (*.xlsx, *.xls, *.csv)
+    - attempts excel then csv reading with reasonable engine fallbacks
+    """
+    # normalize path
+    filename = os.path.abspath(os.path.expanduser(filename))
+    if os.path.exists(filename):
+        chosen = filename
+    else:
+        # Diagnostics
+        cwd = os.getcwd()
+        search_dir = os.path.dirname(filename) or cwd
+        print(f"DEBUG: requested file: {filename}")
+        print(f"DEBUG: current working directory: {cwd}")
+        print(f"DEBUG: searching directory: {search_dir}")
+        try:
+            print("DEBUG: directory listing:", os.listdir(search_dir))
+        except Exception as ex:
+            print(f"DEBUG: cannot list directory '{search_dir}': {ex}")
+
+        # Try direct basename search in search_dir
+        basename = os.path.basename(filename)
+        candidates = []
+        if os.path.isdir(search_dir):
+            for pat in ("*.xlsx", "*.xls", "*.csv"):
+                candidates.extend(sorted(glob.glob(os.path.join(search_dir, pat))))
+        # If nothing in same dir, search project recursively
+        if not candidates:
+            print("DEBUG: no candidates in target directory, searching project recursively for matching files...")
+            for ext in ("*.xlsx", "*.xls", "*.csv"):
+                candidates.extend(sorted(glob.glob(os.path.join(cwd, "**", ext), recursive=True)))
+        # Try to match exact basename first (case-insensitive)
+        chosen = None
+        for c in candidates:
+            if os.path.basename(c).lower() == basename.lower():
+                chosen = c
+                break
+        if chosen is None and candidates:
+            # fallback: pick first candidate and notify
+            chosen = candidates[0]
+            print(f"INFO: requested file not found; using candidate: {chosen}")
+        if chosen is None:
+            # final helpful error
+            raise FileNotFoundError(
+                f"File not found: '{filename}'.\n"
+                f"Current working dir: {cwd}\n"
+                f"Searched directory: {os.path.abspath(search_dir)}\n"
+                "No .xlsx/.xls/.csv file found. Place your data file in that directory or update EXCEL_FILE path."
+            )
+
+    # attempt to read file using extension-aware logic and fallbacks
+    ext = os.path.splitext(chosen)[1].lower()
+    try:
+        if ext in (".xlsx", ".xls"):
+            # prefer openpyxl for xlsx, xlrd for xls (if available)
+            try:
+                df = pd.read_excel(chosen, engine="openpyxl")
+            except Exception:
+                df = pd.read_excel(chosen)  # let pandas pick default engine
+        elif ext == ".csv":
+            df = pd.read_csv(chosen)
+        else:
+            # unknown ext: try excel then csv
+            try:
+                df = pd.read_excel(chosen)
+            except Exception:
+                df = pd.read_csv(chosen)
+    except Exception as e:
+        raise RuntimeError(f"Failed to read data file '{chosen}': {e}")
+
+    # Remove unnamed columns (if any)
+    df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", case=False, regex=True)]
+
+    # Normalize column names
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # Expected columns: time, open, high, low, close
+    if not {"time", "open", "high", "low", "close"}.issubset(df.columns):
+        raise ValueError(f"Unexpected columns found in '{chosen}': {list(df.columns)}. Expected: time, open, high, low, close")
+
+    # Rename for consistency
+    df = df.rename(columns={
+        "time": "Datetime",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close"
+    })
+
+    # Convert types
+    df["Datetime"] = pd.to_datetime(df["Datetime"], errors="coerce", utc=True)
+    df = df.dropna(subset=["Datetime"]).copy()
+
+    for col in ["Open", "High", "Low", "Close"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["Open", "High", "Low", "Close"]).copy()
+    df = df.sort_values("Datetime").reset_index(drop=True)
+
+    return df
+
+def clip_date_range(df: pd.DataFrame, start_ts: str, end_ts: str) -> pd.DataFrame:
+    st = pd.to_datetime(start_ts, utc=True)   # force UTC
+    en = pd.to_datetime(end_ts, utc=True)     # force UTC
+    return df[(df["Datetime"] >= st) & (df["Datetime"] <= en)].copy()
 
 # --------------------- UTIL: resample to HTF if needed ---------------------
 def make_htf_from_ltf(df_ltf, htf_resample=HTF_RESAMPLE):
@@ -177,14 +314,21 @@ def attach_htf_bias_to_ltf(df_ltf, df_htf):
     """
     df_htf = df_htf.copy()
     df_htf["HTF_trend"] = np.where(df_htf["Close"] > df_htf["Open"], "bullish", "bearish")
+    
     # Reindex HTF trend to LTF by asof/merge: use pd.merge_asof
-    df_htf_reset = df_htf[["HTF_trend"]].reset_index().rename(columns={"index": "htf_time"})
-    df_ltf_reset = df_ltf.reset_index().rename(columns={"index": "ltf_time"})
-    merged = pd.merge_asof(df_ltf_reset.sort_values("ltf_time"), df_htf_reset.sort_values("htf_time"),
-                           left_on="ltf_time", right_on="htf_time", direction="backward")
-    merged = merged.set_index("ltf_time")
-    # bring back remaining columns and return
-    df_out = merged[df_ltf.columns.tolist() + ["HTF_trend"]]
+    df_htf_reset = df_htf[["HTF_trend"]].reset_index()
+    df_htf_reset.columns = ["Datetime", "HTF_trend"]
+    
+    df_ltf_reset = df_ltf.reset_index()
+    df_ltf_reset.columns = list(df_ltf_reset.columns[:-1]) + ["Datetime"] if df_ltf_reset.columns[-1] != "Datetime" else df_ltf_reset.columns.tolist()
+    
+    merged = pd.merge_asof(df_ltf_reset.sort_values("Datetime"), 
+                           df_htf_reset.sort_values("Datetime"),
+                           on="Datetime", 
+                           direction="backward")
+    
+    # Bring back remaining columns and return
+    df_out = merged.set_index("Datetime")
     return df_out
 
 
@@ -335,6 +479,11 @@ def backtest_entries(df, entries, start_balance=START_BALANCE):
             balance += pl
             trade_result = {"result": "CLOSED", "pl": pl, "exit_idx": len(df)-1}
 
+        # Calculate pip values
+        direction = "LONG" if e["type"] == "bullish" else "SHORT"
+        exit_price = df["Close"].iat[trade_result["exit_idx"]]
+        pip_risk, pip_outcome = calculate_pip_values(e["entry_price"], e["sl"], exit_price, direction, RISK_REWARD)
+
         trades.append({
             "breaker_time": e["breaker_time"],
             "type": e["type"],
@@ -343,7 +492,9 @@ def backtest_entries(df, entries, start_balance=START_BALANCE):
             "tp": e["tp"],
             "pl": trade_result["pl"],
             "result": trade_result["result"],
-            "balance": balance
+            "balance": balance,
+            "pip_risk": pip_risk,
+            "pip_outcome": pip_outcome
         })
 
     # summary
@@ -404,6 +555,47 @@ def run_unicorn_strategy(df_ltf, df_htf=None, debug=False):
         }
     else:
         return results
+
+
+# --------------------- MAIN EXECUTION (adapted from BPB_FVG) ---------------------
+if __name__ == "__main__":
+    # Load data
+    df_raw = load_15m_data_from_excel(EXCEL_FILE)
+    df_clipped = clip_date_range(df_raw, START_DATE, END_DATE)
+
+    # Set Datetime as index
+    df_ltf = df_clipped.set_index("Datetime")
+
+    # Run strategy
+    results = run_unicorn_strategy(df_ltf)
+
+    # Prepare output DataFrame
+    trades_df = pd.DataFrame(results["trades"])
+    if not trades_df.empty:
+        trades_df["breaker_time"] = pd.to_datetime(trades_df["breaker_time"])
+        trades_df = trades_df.sort_values("breaker_time")
+
+    # Add summary row
+    summary = {
+        "breaker_time": "SUMMARY",
+        "type": "",
+        "entry": "",
+        "sl": "",
+        "tp": "",
+        "pl": results["final_balance"] - results["start_balance"],
+        "result": f"{results['wins']}/{results['losses']}",
+        "balance": results["final_balance"],
+        "pip_risk": "",
+        "pip_outcome": ""
+    }
+    summary_df = pd.DataFrame([summary])
+    output_df = pd.concat([trades_df, summary_df], ignore_index=True)
+
+    # Save to Excel
+    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+    output_df.to_excel(OUTPUT_FILE, index=False)
+    print(f"Backtest results saved to {OUTPUT_FILE}")
+    print(f"Total Trades: {results['total_trades']}, Wins: {results['wins']}, Losses: {results['losses']}, Winrate: {results['winrate']}%, Final Balance: {results['final_balance']}")
 
 
 # --------------------- HOW TO USE (example) ---------------------
